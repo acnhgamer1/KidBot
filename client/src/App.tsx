@@ -1,150 +1,285 @@
-import { useState, useEffect } from 'react';
-import mentatLogo from '/mentat.png';
+import { useState, useRef, useEffect } from 'react';
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  type?: 'text' | 'image';
+  imageUrl?: string;
+  timestamp: Date;
+}
 
 function App() {
-  const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDeepThink, setIsDeepThink] = useState(false);
+  const [showImageGen, setShowImageGen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    const fetchBackendMessage = async () => {
-      setLoading(true);
-      setError(null);
+    scrollToBottom();
+  }, [messages]);
 
-      try {
-        const response = await fetch('/api');
+  const sendMessage = async () => {
+    if (!inputValue.trim() || isLoading) return;
 
-        if (!response.ok) {
-          throw new Error(`HTTP error ${response.status}`);
-        }
-
-        const data = await response.json();
-        setMessage(data.message);
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError(
-          err instanceof Error ? err.message : 'An unknown error occurred'
-        );
-      } finally {
-        setLoading(false);
-      }
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: inputValue,
+      timestamp: new Date(),
     };
 
-    fetchBackendMessage();
-  }, []);
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const endpoint = isDeepThink ? '/api/deep-think' : '/api/chat';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: inputValue,
+          conversation: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generateImage = async () => {
+    if (!inputValue.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: `Generate image: ${inputValue}`,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: inputValue,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const imageMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Generated image for: "${data.prompt}"`,
+        type: 'image',
+        imageUrl: data.imageUrl,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, imageMessage]);
+    } catch (error) {
+      console.error('Error generating image:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content:
+          'Sorry, I encountered an error generating the image. Please try again.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (showImageGen) {
+        generateImage();
+      } else {
+        sendMessage();
+      }
+    }
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+  };
 
   return (
-    <div
-      style={{
-        backgroundColor: '#fafafa',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        height: '100vh',
-        width: '100vw',
-        justifyContent: 'center',
-        padding: '20px',
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      }}
-    >
-      {/* Logo */}
-      <div>
-        <a href="https://mentat.ai" target="_blank">
-          <img src={mentatLogo} alt="Mentat Logo" />
-        </a>
+    <div className="chat-container">
+      {/* Header */}
+      <div className="chat-header">
+        <h1>KidBot AI</h1>
+        <div className="header-controls">
+          <button
+            className={`mode-toggle ${isDeepThink ? 'active' : ''}`}
+            onClick={() => setIsDeepThink(!isDeepThink)}
+            disabled={isLoading}
+          >
+            {isDeepThink ? '🧠 Deep Think' : '💭 Normal'}
+          </button>
+          <button
+            className={`mode-toggle ${showImageGen ? 'active' : ''}`}
+            onClick={() => setShowImageGen(!showImageGen)}
+            disabled={isLoading}
+          >
+            {showImageGen ? '🎨 Image' : '💬 Text'}
+          </button>
+          <button
+            className="clear-button"
+            onClick={clearChat}
+            disabled={isLoading}
+          >
+            🗑️ Clear
+          </button>
+        </div>
       </div>
 
-      {/* Main content */}
-      <div
-        className="paper"
-        style={{
-          maxWidth: '500px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px',
-        }}
-      >
-        <h1>Mentat Template JS</h1>
-
-        {/* Tech stack */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            gap: '12px',
-            marginBottom: '24px',
-          }}
-        >
-          {[
-            ['Frontend', 'React, Vite, Vitest'],
-            ['Backend', 'Node.js, Express, Jest'],
-            ['Utilities', 'TypeScript, ESLint, Prettier'],
-          ].map(([title, techs]) => (
-            <div className="section" style={{ textAlign: 'center' }} key={title}>
-              <div
-                style={{
-                  fontWeight: '500',
-                  fontSize: '14px',
-                  color: '#1f2937',
-                  marginBottom: '4px',
-                }}
-              >
-                {title}
+      {/* Messages */}
+      <div className="messages-container">
+        {messages.length === 0 && (
+          <div className="welcome-message">
+            <h2>Welcome to KidBot AI! 🤖</h2>
+            <p>
+              I can help you with questions, generate images, and even use deep
+              thinking mode for complex problems.
+            </p>
+            <div className="feature-list">
+              <div>
+                💬 <strong>Normal Chat:</strong> Ask me anything!
               </div>
-              <div style={{ fontSize: '12px', color: '#6b7280' }}>{techs}</div>
+              <div>
+                🧠 <strong>Deep Think:</strong> I'll think twice for better
+                answers
+              </div>
+              <div>
+                🎨 <strong>Image Generation:</strong> Describe what you want to
+                see
+              </div>
             </div>
-          ))}
-        </div>
-
-        {/* Server message */}
-        <div className="section">
-          <div
-            style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: '#1f2937',
-              marginBottom: '8px',
-            }}
-          >
-            Message from server:
           </div>
-          <div style={{ fontSize: '14px', color: '#1f2937' }}>
-            {loading ? (
-              'Loading message from server...'
-            ) : error ? (
-              <span style={{ color: '#dc2626' }}>Error: {error}</span>
-            ) : message ? (
-              message
-            ) : (
-              <span style={{ color: '#6b7280', fontStyle: 'italic' }}>
-                No message from server
-              </span>
-            )}
-          </div>
-        </div>
+        )}
 
-        {/* Call to action */}
-        <div
-          style={{
-            textAlign: 'center',
-            fontSize: '14px',
-            color: '#6b7280',
-          }}
-        >
-          Create a new GitHub issue and tag{' '}
-          <code
-            style={{
-              backgroundColor: '#f8fafc',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              fontSize: '13px',
-              color: '#1f2937',
-            }}
+        {messages.map((message) => (
+          <div key={message.id} className={`message ${message.role}`}>
+            <div className="message-content">
+              {message.type === 'image' && message.imageUrl ? (
+                <div>
+                  <p>{message.content}</p>
+                  <img
+                    src={message.imageUrl}
+                    alt="Generated image"
+                    className="generated-image"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const errorDiv = document.createElement('div');
+                      errorDiv.textContent = 'Failed to load image';
+                      errorDiv.className = 'image-error';
+                      target.parentNode?.appendChild(errorDiv);
+                    }}
+                  />
+                </div>
+              ) : (
+                <p>{message.content}</p>
+              )}
+            </div>
+            <div className="message-time">
+              {message.timestamp.toLocaleTimeString()}
+            </div>
+          </div>
+        ))}
+
+        {isLoading && (
+          <div className="message assistant">
+            <div className="message-content">
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="input-container">
+        <div className="input-wrapper">
+          <textarea
+            ref={inputRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder={
+              showImageGen
+                ? 'Describe the image you want to generate...'
+                : isDeepThink
+                  ? 'Ask me something complex for deep thinking...'
+                  : 'Type your message...'
+            }
+            disabled={isLoading}
+            rows={1}
+          />
+          <button
+            onClick={showImageGen ? generateImage : sendMessage}
+            disabled={!inputValue.trim() || isLoading}
+            className="send-button"
           >
-            @MentatBot
-          </code>{' '}
-          to get started.
+            {showImageGen ? '🎨' : '➤'}
+          </button>
         </div>
       </div>
     </div>
