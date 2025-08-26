@@ -1,66 +1,129 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from '../App';
-
-// Define types
-type ApiResponse = {
-  message: string;
-};
 
 // Mock the fetch API
 globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
-function mockFetchResponse(data: ApiResponse) {
-  return {
-    json: vi.fn().mockResolvedValue(data),
-    ok: true,
-  };
-}
-
 describe('App Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default mock implementation
-    (globalThis.fetch as unknown as Mock).mockResolvedValue(
-      mockFetchResponse({ message: 'Test Message from API' })
-    );
   });
 
-  it('renders App component correctly', () => {
+  it('renders KidBot AI chat interface correctly', () => {
     render(<App />);
-    expect(screen.getByText('Mentat Template JS')).toBeInTheDocument();
-    expect(screen.getByText(/Frontend: React, Vite/)).toBeInTheDocument();
-    expect(screen.getByText(/Backend: Node.js, Express/)).toBeInTheDocument();
+
+    // Check for main heading
+    expect(screen.getByText('KidBot AI')).toBeInTheDocument();
+
+    // Check for welcome message
+    expect(screen.getByText('Welcome to KidBot AI! 🤖')).toBeInTheDocument();
+
+    // Check for mode toggle buttons
+    expect(screen.getByText('💭 Normal')).toBeInTheDocument();
+    expect(screen.getByText('💬 Text')).toBeInTheDocument();
+    expect(screen.getByText('🗑️ Clear')).toBeInTheDocument();
+
+    // Check for input placeholder
     expect(
-      screen.getByText(/Utilities: Typescript, ESLint, Prettier/)
+      screen.getByPlaceholderText('Type your message...')
     ).toBeInTheDocument();
   });
 
-  it('loads and displays API message', async () => {
+  it('toggles between normal and deep think modes', async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    // Should initially show loading message
-    expect(screen.getByText(/Loading message from server/)).toBeInTheDocument();
+    const deepThinkButton = screen.getByText('💭 Normal');
 
-    // Wait for the fetch to resolve and check if the message is displayed
-    await waitFor(() => {
-      expect(screen.getByText('Test Message from API')).toBeInTheDocument();
-    });
+    // Click to toggle to deep think mode
+    await user.click(deepThinkButton);
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api');
+    expect(screen.getByText('🧠 Deep Think')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(
+        'Ask me something complex for deep thinking...'
+      )
+    ).toBeInTheDocument();
   });
 
-  it('handles API error', async () => {
-    // Mock a failed API call
+  it('toggles between text and image modes', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const imageButton = screen.getByText('💬 Text');
+
+    // Click to toggle to image mode
+    await user.click(imageButton);
+
+    expect(screen.getByText('🎨 Image')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Describe the image you want to generate...')
+    ).toBeInTheDocument();
+  });
+
+  it('sends a chat message successfully', async () => {
+    const user = userEvent.setup();
+
+    // Mock successful API response
+    (globalThis.fetch as unknown as Mock).mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        message: 'Hello! How can I help you?',
+        conversation: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hello! How can I help you?' },
+        ],
+      }),
+    });
+
+    render(<App />);
+
+    const input = screen.getByPlaceholderText('Type your message...');
+    const sendButton = screen.getByRole('button', { name: '➤' });
+
+    // Type a message
+    await user.type(input, 'Hello');
+
+    // Send the message
+    await user.click(sendButton);
+
+    // Check that fetch was called with correct endpoint
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/chat',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: expect.stringContaining('Hello'),
+      })
+    );
+  });
+
+  it('handles chat API error gracefully', async () => {
+    const user = userEvent.setup();
+
+    // Mock API error
     (globalThis.fetch as unknown as Mock).mockRejectedValue(
-      new Error('API Error')
+      new Error('Network error')
     );
 
     render(<App />);
 
-    // Wait for the error message to appear
-    await waitFor(() => {
-      expect(screen.getByText(/Error: API Error/)).toBeInTheDocument();
-    });
+    const input = screen.getByPlaceholderText('Type your message...');
+    const sendButton = screen.getByRole('button', { name: '➤' });
+
+    // Type and send a message
+    await user.type(input, 'Test message');
+    await user.click(sendButton);
+
+    // Should show error message in chat
+    expect(
+      await screen.findByText(
+        'Sorry, I encountered an error. Please try again.'
+      )
+    ).toBeInTheDocument();
   });
 });
