@@ -37,35 +37,90 @@ function App() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = inputValue;
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const endpoint = isDeepThink ? '/api/deep-think' : '/api/chat';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: inputValue,
-          conversation: messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
-      });
+      let aiResponse: string;
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (isDeepThink) {
+        // Deep think mode: First AI generates, second AI improves
+
+        // First AI response
+        const firstResponse = await fetch('https://text.pollinations.ai/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [
+              ...messages.map((m) => ({ role: m.role, content: m.content })),
+              { role: 'user', content: currentInput },
+            ],
+            model: 'openai',
+            jsonMode: false,
+          }),
+        });
+
+        if (!firstResponse.ok) {
+          throw new Error(`First AI response error: ${firstResponse.status}`);
+        }
+
+        const initialAnswer = await firstResponse.text();
+
+        // Second AI reviews and improves
+        const reviewPrompt = `Please review and improve the following response to the user's question: "${currentInput}"
+
+Original response: ${initialAnswer}
+
+Please provide an improved, more comprehensive, and accurate response:`;
+
+        const secondResponse = await fetch('https://text.pollinations.ai/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: reviewPrompt }],
+            model: 'openai',
+            jsonMode: false,
+          }),
+        });
+
+        if (!secondResponse.ok) {
+          throw new Error(`Second AI response error: ${secondResponse.status}`);
+        }
+
+        aiResponse = await secondResponse.text();
+      } else {
+        // Normal chat mode
+        const response = await fetch('https://text.pollinations.ai/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [
+              ...messages.map((m) => ({ role: m.role, content: m.content })),
+              { role: 'user', content: currentInput },
+            ],
+            model: 'openai',
+            jsonMode: false,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Pollinations API error: ${response.status}`);
+        }
+
+        aiResponse = await response.text();
       }
-
-      const data = await response.json();
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.message,
+        content: aiResponse,
         timestamp: new Date(),
       };
 
@@ -95,32 +150,20 @@ function App() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentPrompt = inputValue;
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: inputValue,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Generate image using Pollinations AI directly
+      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(currentPrompt)}?width=512&height=512&nologo=true`;
 
       const imageMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Generated image for: "${data.prompt}"`,
+        content: `Generated image for: "${currentPrompt}"`,
         type: 'image',
-        imageUrl: data.imageUrl,
+        imageUrl: imageUrl,
         timestamp: new Date(),
       };
 

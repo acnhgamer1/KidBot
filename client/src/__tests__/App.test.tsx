@@ -66,16 +66,10 @@ describe('App Component', () => {
   it('sends a chat message successfully', async () => {
     const user = userEvent.setup();
 
-    // Mock successful API response
+    // Mock successful API response from Pollinations AI
     (globalThis.fetch as unknown as Mock).mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        message: 'Hello! How can I help you?',
-        conversation: [
-          { role: 'user', content: 'Hello' },
-          { role: 'assistant', content: 'Hello! How can I help you?' },
-        ],
-      }),
+      text: vi.fn().mockResolvedValue('Hello! How can I help you?'),
     });
 
     render(<App />);
@@ -89,9 +83,9 @@ describe('App Component', () => {
     // Send the message
     await user.click(sendButton);
 
-    // Check that fetch was called with correct endpoint
+    // Check that fetch was called with Pollinations AI endpoint
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/chat',
+      'https://text.pollinations.ai/',
       expect.objectContaining({
         method: 'POST',
         headers: {
