@@ -16,7 +16,6 @@ function App() {
   const [isDeepThink, setIsDeepThink] = useState(false);
   const [showImageGen, setShowImageGen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -183,7 +182,7 @@ Please provide an improved, more comprehensive, and accurate response:`;
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (showImageGen) {
@@ -302,10 +301,9 @@ Please provide an improved, more comprehensive, and accurate response:`;
       <div className="input-container">
         <div className="input-wrapper">
           <textarea
-            ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder={
               showImageGen
                 ? 'Describe the image you want to generate...'
